@@ -11,4 +11,4 @@ flask_cors
 langchain-text-splitters
 faiss-cpu
 langchain-community
-
+gunicorn
