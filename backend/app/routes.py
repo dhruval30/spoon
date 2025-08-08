@@ -16,14 +16,15 @@ from . import services
 
 # In-memory store
 # Define a temporary upload folder with production awareness
+# Define a temporary upload folder with production awareness
 if os.environ.get('RENDER_INSTANCE_ID'):
-    # Use Render's persistent disk path in production
+    # On Render, the disk is mounted, so we assume the directory exists.
     UPLOAD_FOLDER = '/var/data/spoon_uploads'
 else:
-    # Use a local folder for development
+    # For local development, create the folder if it doesn't exist.
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_uploads')
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # In-memory store
