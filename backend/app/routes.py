@@ -1,10 +1,11 @@
 # File: backend/app/routes.py
 # Purpose: Defines all API endpoints and page-serving routes.
 
-from flask import request, jsonify, render_template
+from flask import request, jsonify, render_template, send_from_directory
 import os
 import concurrent.futures
-
+from werkzeug.utils import secure_filename
+import concurrent.futures
 # LangChain imports
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -14,11 +15,24 @@ from app import app
 from . import services
 
 # In-memory store
+# Define a temporary upload folder with production awareness
+if os.environ.get('RENDER_INSTANCE_ID'):
+    # Use Render's persistent disk path in production
+    UPLOAD_FOLDER = '/var/data/spoon_uploads'
+else:
+    # Use a local folder for development
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_uploads')
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# In-memory store
 session_data = {
     "docs": None,
     "file_manifest": None,
     "repo_url": None,
-    "pdf_docs": None
+    "pdf_docs": None,
+    "document_filename": None # Remembers the last uploaded file for viewing
 }
 
 # --- Page Rendering Routes ---
@@ -50,6 +64,7 @@ def load_repo_route():
         # --- START OF CHANGE ---
         # Clear any leftover PDF data from previous sessions
         session_data["pdf_docs"] = None
+        session_data["document_filename"] = None
         # --- END OF CHANGE ---
 
         docs = services.fetch_repo_docs(repo_url)
@@ -86,6 +101,13 @@ def load_file_route():
         session_data["repo_url"] = None
         # --- END OF CHANGE ---
 
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        file.seek(0) # Reset file stream pointer after saving
+        
+        session_data["document_filename"] = filename # Remember the filename
+
         docs = services.process_uploaded_file_docs(file)
         session_data["docs"] = docs
         
@@ -116,6 +138,13 @@ def load_pdf_route():
         # This route already correctly clears the other data stores
         session_data["docs"] = None
         session_data["repo_url"] = None
+
+        filename = secure_filename(pdf_file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        pdf_file.save(file_path)
+        pdf_file.seek(0) # Reset file stream pointer after saving
+
+        session_data["document_filename"] = filename # Remember the filename
         
         pdf_docs = services.process_pdf_file_and_chunk(pdf_file)
         session_data["pdf_docs"] = pdf_docs
@@ -413,3 +442,19 @@ def get_file_content_route():
     except Exception as e:
         print(f"Unexpected error: {e}")
         return jsonify({"error": "Failed to fetch file content."}), 500
+    
+
+@app.route('/api/get_document_content', methods=['GET'])
+def get_document_content_route():
+    """Serves the last uploaded document for viewing."""
+    global session_data
+    filename = session_data.get("document_filename")
+
+    if not filename:
+        return jsonify({"error": "No document has been uploaded in this session."}), 404
+
+    try:
+        print(f"Serving file for viewing: {filename} from {app.config['UPLOAD_FOLDER']}")
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    except FileNotFoundError:
+        return jsonify({"error": "Could not find the document file to display."}), 404
