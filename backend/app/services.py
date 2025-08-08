@@ -207,81 +207,64 @@ def _get_repo_structure(repo, path="", indent=""):
 
 def process_uploaded_file_docs(file_stream):
     """
-    Processes an uploaded file, chunks it, and returns a list of Document objects.
+    Processes a .md or .txt file from an in-memory stream.
     """
     filename = file_stream.filename
-    print(f"Processing uploaded file: {filename}")
+    print(f"Processing uploaded file stream: {filename}")
     
     raw_text = ""
-    if filename.endswith('.pdf'):
-        try:
-            pdf_reader = PdfReader(BytesIO(file_stream.read()))
-            for page in pdf_reader.pages:
-                raw_text += page.extract_text() if page.extract_text() else ""
-        except Exception as e:
-            raise ValueError(f"Failed to read PDF file: {e}")
-    elif filename.endswith(('.md', '.txt')):
+    if filename.lower().endswith(('.md', '.txt')):
         raw_text = file_stream.read().decode('utf-8')
     else:
-        raise ValueError("Unsupported file type. Please upload a PDF, MD, or TXT file.")
+        # This function should not be called for other types
+        raise ValueError("Unsupported file type for this function.")
     
     if not raw_text.strip():
         return []
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=200) #
-    chunks = text_splitter.split_text(raw_text) #
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=200)
+    chunks = text_splitter.split_text(raw_text)
     
     docs = []
     for i, chunk in enumerate(chunks):
         docs.append(Document(
             page_content=chunk,
             metadata={"source": filename, "chunk": i}
-        )) #
+        ))
         
-    print(f"Created {len(docs)} documents for the uploaded file.")
+    print(f"Created {len(docs)} documents for {filename}.")
     return docs
 
-# --- NEW FUNCTION FOR PDF PROCESSING ---
 def process_pdf_file_and_chunk(file_stream):
     """
-    Processes an uploaded PDF file, chunks its text content, and returns a list of Document objects.
-    This function is a new, dedicated processor for PDF analysis.
+    Processes a PDF file from an in-memory stream.
     """
     filename = file_stream.filename
-    print(f"Initiating new PDF processing for: {filename}")
-
-    if not filename.lower().endswith('.pdf'):
-        raise ValueError("Invalid file type. This function only accepts PDF files.")
+    print(f"Processing PDF stream: {filename}")
 
     raw_text = ""
     try:
         # Read PDF content from the in-memory stream
-        pdf_reader = PdfReader(BytesIO(file_stream.read())) #
-        # Extract text from every page
+        pdf_reader = PdfReader(BytesIO(file_stream.read()))
         for page in pdf_reader.pages:
-            page_text = page.extract_text() #
+            page_text = page.extract_text()
             if page_text:
                 raw_text += page_text
     except Exception as e:
-        raise ValueError(f"Could not read the provided PDF file: {e}")
+        raise ValueError(f"Could not read the provided PDF stream: {e}")
 
     if not raw_text.strip():
         return []
 
-    # Use LangChain's text splitter to create manageable chunks
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=3000,  # Smaller chunk size for potentially dense PDF text
-        chunk_overlap=150
-    ) #
-    chunks = text_splitter.split_text(raw_text) #
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=150)
+    chunks = text_splitter.split_text(raw_text)
 
-    # Create a list of LangChain Document objects
     pdf_docs = []
     for i, chunk_content in enumerate(chunks):
         pdf_docs.append(Document(
             page_content=chunk_content,
             metadata={"source": filename, "chunk_id": i}
-        )) #
+        ))
 
-    print(f"Successfully created {len(pdf_docs)} chunks for the PDF: {filename}.")
+    print(f"Successfully created {len(pdf_docs)} chunks for {filename}.")
     return pdf_docs

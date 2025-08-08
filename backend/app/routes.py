@@ -1,11 +1,12 @@
 # File: backend/app/routes.py
 # Purpose: Defines all API endpoints and page-serving routes.
 
-from flask import request, jsonify, render_template, send_from_directory
+from flask import request, jsonify, render_template, send_file, send_from_directory
 import os
-import concurrent.futures
+from io import BytesIO
 from werkzeug.utils import secure_filename
 import concurrent.futures
+
 # LangChain imports
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -14,26 +15,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from app import app
 from . import services
 
-# In-memory store
-# Define a temporary upload folder with production awareness
-# Define a temporary upload folder with production awareness
-if os.environ.get('RENDER_INSTANCE_ID'):
-    # On Render, the disk is mounted, so we assume the directory exists.
-    UPLOAD_FOLDER = '/var/data/spoon_uploads'
-else:
-    # For local development, create the folder if it doesn't exist.
-    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_uploads')
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# In-memory store
+# In-memory store for a single session (works on Render free tier)
 session_data = {
     "docs": None,
     "file_manifest": None,
     "repo_url": None,
     "pdf_docs": None,
-    "document_filename": None # Remembers the last uploaded file for viewing
+    "document_filename": None, # Stores filename for the viewer
+    "document_content": None,  # Stores raw file bytes for the viewer
+    "document_mimetype": None # Stores the file's mimetype
 }
 
 # --- Page Rendering Routes ---
@@ -62,11 +52,11 @@ def load_repo_route():
         return jsonify({"error": "Repository URL is required"}), 400
 
     try:
-        # --- START OF CHANGE ---
-        # Clear any leftover PDF data from previous sessions
+        # Clear any leftover document data from previous sessions
         session_data["pdf_docs"] = None
         session_data["document_filename"] = None
-        # --- END OF CHANGE ---
+        session_data["document_content"] = None
+        session_data["document_mimetype"] = None
 
         docs = services.fetch_repo_docs(repo_url)
         session_data["docs"] = docs
@@ -87,7 +77,7 @@ def load_repo_route():
 
 @app.route('/api/load_file', methods=['POST'])
 def load_file_route():
-    """Loads a non-PDF file (.md, .txt) and ensures other data is cleared."""
+    """Loads a non-PDF file (.md, .txt) entirely in-memory."""
     global session_data
     if 'file' not in request.files:
         return jsonify({"error": "No file part in the request"}), 400
@@ -96,20 +86,24 @@ def load_file_route():
         return jsonify({"error": "No selected file"}), 400
     
     try:
-        # --- START OF CHANGE ---
-        # Clear any leftover PDF data from previous sessions
-        session_data["pdf_docs"] = None
-        session_data["repo_url"] = None
-        # --- END OF CHANGE ---
+        # Clear all other session data for a clean slate
+        session_data.update({
+            "pdf_docs": None, "repo_url": None, "docs": None, "file_manifest": None
+        })
 
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        file.seek(0) # Reset file stream pointer after saving
+        # Read the entire file into memory for both processing and viewing
+        file_content_bytes = file.read()
         
-        session_data["document_filename"] = filename # Remember the filename
-
-        docs = services.process_uploaded_file_docs(file)
+        # Store for the viewer
+        session_data["document_filename"] = secure_filename(file.filename)
+        session_data["document_content"] = file_content_bytes
+        session_data["document_mimetype"] = file.mimetype
+        
+        # Create a new in-memory stream for the processing function
+        file_stream_for_processing = BytesIO(file_content_bytes)
+        file_stream_for_processing.filename = file.filename # Add filename attribute for the service
+        
+        docs = services.process_uploaded_file_docs(file_stream_for_processing)
         session_data["docs"] = docs
         
         file_manifest = "\n".join([doc.metadata.get("source", "") for doc in docs])
@@ -126,7 +120,7 @@ def load_file_route():
 
 @app.route('/api/load_pdf', methods=['POST'])
 def load_pdf_route():
-    """Loads a PDF file and ensures other data is cleared."""
+    """Loads a PDF file entirely in-memory."""
     global session_data
     if 'file' not in request.files:
         return jsonify({"error": "No file was included in the request."}), 400
@@ -136,18 +130,24 @@ def load_pdf_route():
         return jsonify({"error": "No file was selected."}), 400
 
     try:
-        # This route already correctly clears the other data stores
-        session_data["docs"] = None
-        session_data["repo_url"] = None
+        # Clear all other session data for a clean slate
+        session_data.update({
+            "docs": None, "repo_url": None, "pdf_docs": None, "file_manifest": None
+        })
 
-        filename = secure_filename(pdf_file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        pdf_file.save(file_path)
-        pdf_file.seek(0) # Reset file stream pointer after saving
+        # Read the entire file into memory for both processing and viewing
+        file_content_bytes = pdf_file.read()
 
-        session_data["document_filename"] = filename # Remember the filename
-        
-        pdf_docs = services.process_pdf_file_and_chunk(pdf_file)
+        # Store for the viewer
+        session_data["document_filename"] = secure_filename(pdf_file.filename)
+        session_data["document_content"] = file_content_bytes
+        session_data["document_mimetype"] = pdf_file.mimetype
+
+        # Create a new in-memory stream for the processing function
+        file_stream_for_processing = BytesIO(file_content_bytes)
+        file_stream_for_processing.filename = pdf_file.filename # Add filename attribute for the service
+
+        pdf_docs = services.process_pdf_file_and_chunk(file_stream_for_processing)
         session_data["pdf_docs"] = pdf_docs
         
         return jsonify({
@@ -160,8 +160,6 @@ def load_pdf_route():
         print(f"Error in new /api/load_pdf route: {e}")
         return jsonify({"error": "A server error occurred while processing the PDF."}), 500
 
-# The rest of the file (ask_question_route, ask_pdf_question_route, etc.) remains unchanged.
-# Ensure the following functions are present below this point in your file.
 
 @app.route('/api/ask_question', methods=['POST'])
 def ask_question_route():
@@ -398,7 +396,7 @@ def ask_pdf_question_route():
             )
             pdf_responder_chain = pdf_responder_prompt | llm | StrOutputParser()
             
-            print(f"--- Running PDF Responder with {len(relevant_pdf_docs)} chunks... ---")
+            print(f"--- Running PDF Responder with {len(relevant_pdf_docs)} documents... ---")
             answer = pdf_responder_chain.invoke({
                 "context": context_for_pdf_responder,
                 "question": question
@@ -411,7 +409,6 @@ def ask_pdf_question_route():
         return jsonify({"error": f"An AI error occurred while answering the question about the PDF. Error: {str(e)}"}), 500
 
 
-# --- UNCHANGED ROUTES for file tree Browse ---
 @app.route('/api/get_repo_tree', methods=['GET'])
 def get_repo_tree_route():
     global session_data
@@ -425,6 +422,7 @@ def get_repo_tree_route():
     except Exception as e:
         print(f"Unexpected error: {e}")
         return jsonify({"error": "Failed to fetch repository tree."}), 500
+
 
 @app.route('/api/get_file_content', methods=['POST'])
 def get_file_content_route():
