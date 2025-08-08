@@ -1,0 +1,14 @@
+# backend/requirements.txt
+
+Flask
+python-dotenv
+PyGithub
+langchain
+langchain-google-genai
+google-generativeai
+PyPDF2
+flask_cors
+langchain-text-splitters
+faiss-cpu
+langchain-community
+

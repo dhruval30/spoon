@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spoon - Analysis</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
+
+    <style>
+        :root {
+            --background-primary: #0D0D0D;
+            --background-secondary: #171717;
+            --text-primary: #E5E7EB;
+            --text-secondary: #9CA3AF;
+            --accent: #4F46E5;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            font-size: 14px;
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+        .sidebar-collapsed .sidebar-text { display: none; }
+        .sidebar-collapsed .sidebar-justify { justify-content: center; }
+
+        .prose { color: var(--text-primary); font-size: 0.9rem; line-height: 1.6; }
+        .prose h3 { font-size: 1.1em; margin-bottom: 0.5em; color: #fff; }
+        .prose strong { color: #fff; }
+        .prose pre { background-color: var(--background-primary); border: 1px solid #374151; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.9em; }
+        .prose code:not(pre > code) { background-color: #374151; padding: 0.2em 0.4em; border-radius: 0.3em; font-size: 0.85em; }
+        .prose ul { list-style-position: outside; padding-left: 1.25rem; margin-top: 0.5em; }
+        .prose li::marker { color: var(--text-secondary); }
+        .input-wrapper:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+        
+        .tree-item {
+            display: flex;
+            align-items: center;
+            padding: 0.375rem 0.5rem;
+            margin: 0.125rem 0;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+            user-select: none;
+            font-size: 0.85rem;
+        }
+        .tree-item:hover {
+            background-color: rgba(75, 85, 99, 0.3);
+        }
+        .tree-item.selected {
+            background-color: rgba(79, 70, 229, 0.2);
+            border: 1px solid rgba(79, 70, 229, 0.4);
+        }
+        .tree-children {
+            margin-left: 1rem;
+            border-left: 1px solid #374151;
+            padding-left: 0.5rem;
+        }
+        .tree-toggle {
+            width: 1rem;
+            height: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.375rem;
+            font-size: 0.75rem;
+            transition: transform 0.15s ease;
+        }
+        .tree-toggle.expanded {
+            transform: rotate(90deg);
+        }
+        .tree-icon {
+            margin-right: 0.5rem;
+            width: 1rem;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+        .file-preview {
+            background-color: var(--background-primary);
+            border: 1px solid #374151;
+            border-radius: 0.5rem;
+            height: 100%;
+            overflow-y: auto;
+        }
+        .file-preview pre {
+            margin: 0;
+            padding: 1rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+        #repo-canvas {
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .canvas-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #374151;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .canvas-body {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 1rem;
+        }
+        .tree-panel {
+            width: 100%;
+            height: 50%;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #374151;
+        }
+        .preview-panel {
+            width: 100%;
+            height: 50%;
+            padding-top: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        #tree-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .hint-card {
+            background-color: var(--background-secondary);
+            border: 1px solid #374151;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            text-align: left;
+        }
+        .hint-card:hover {
+            background-color: #374151;
+            color: var(--text-primary);
+            transform: translateY(-2px);
+        }
+
+        .chat-history-item {
+            padding: 0.75rem;
+            margin: 0.25rem 0;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+        .chat-history-item:hover {
+            background-color: rgba(75, 85, 99, 0.3);
+        }
+        .chat-history-item.active {
+            background-color: rgba(79, 70, 229, 0.2);
+            border-left-color: var(--accent);
+        }
+        .chat-history-item h4 {
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+        .chat-history-item p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+        .chat-history-item .chat-type-badge {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            background-color: rgba(79, 70, 229, 0.2);
+            border: 1px solid rgba(79, 70, 229, 0.4);
+            border-radius: 1rem;
+            font-size: 0.625rem;
+            font-weight: 500;
+            margin-top: 0.25rem;
+        }
+
+        .option-card {
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(147, 51, 234, 0.1) 100%);
+            border: 1px solid rgba(79, 70, 229, 0.3);
+            border-radius: 1rem;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .option-card:hover {
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(147, 51, 234, 0.2) 100%);
+            border-color: rgba(79, 70, 229, 0.5);
+            transform: translateY(-2px);
+        }
+        .option-card .icon {
+            width: 4rem;
+            height: 4rem;
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.8) 0%, rgba(147, 51, 234, 0.8) 100%);
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem auto;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .mode-switch-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 3.5rem;
+            height: 3.5rem;
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.9) 0%, rgba(147, 51, 234, 0.9) 100%);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            z-index: 40;
+        }
+        .mode-switch-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .mode-switch-btn {
+                bottom: 1rem;
+                right: 1rem;
+                width: 3rem;
+                height: 3rem;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="app-container" class="relative flex h-screen">
+        <aside id="sidebar" class="bg-black h-full p-2 md:p-4 flex flex-col transition-all duration-300 ease-in-out w-64 fixed md:relative inset-y-0 left-0 z-30 -translate-x-full md:translate-x-0">
+             <div class="flex items-center justify-between mb-6 h-10 sidebar-justify">
+                <h1 class="text-xl font-bold text-white sidebar-text">Spoon<span class="text-indigo-500">.</span></h1>
+                <a href="#" class="text-gray-400 hover:text-white sidebar-text" title="New Chat" onclick="newChat()">
+                    <i class="fa-solid fa-square-plus text-xl"></i>
+                </a>
+                <button id="close-sidebar-btn" class="md:hidden text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+            <div class="flex-grow overflow-y-auto pr-2">
+                <h2 class="text-xs font-semibold text-gray-500 mb-2 sidebar-text uppercase tracking-wider">Chat History</h2>
+                <div id="chat-history-list">
+                    <!-- Chat history items will be populated here -->
+                </div>
+            </div>
+            <div class="mt-auto text-sm">
+                 <a href="/" class="flex items-center p-2 rounded-lg hover:bg-gray-800 text-gray-400 sidebar-justify">
+                    <i class="fa-solid fa-arrow-left mr-3"></i><span class="sidebar-text">Back to Home</span>
+                </a>
+                <button id="sidebar-toggle-btn" class="hidden md:flex items-center w-full p-2 rounded-lg hover:bg-gray-800 text-gray-400 mt-2 sidebar-justify">
+                    <i class="fa-solid fa-chevron-left transition-transform duration-300"></i><span class="ml-3 sidebar-text">Collapse</span>
+                </button>
+            </div>
+        </aside>
+
+        <div id="sidebar-backdrop" class="fixed inset-0 bg-black bg-opacity-75 z-20 hidden md:hidden"></div>
+
+        <main id="main-content" class="flex-1 flex bg-[var(--background-primary)] overflow-hidden">
+             
+            <div id="chat-column" class="flex-1 flex flex-col h-full">
+                <div class="w-full flex items-center p-4 md:hidden flex-shrink-0">
+                    <button id="open-sidebar-btn" class="text-gray-400 hover:text-white mr-4">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                    <h2 id="mobile-header-title" class="text-base font-semibold truncate">Spoon Analysis</h2>
+                    <button id="show-repo-btn-mobile" class="ml-auto p-2 text-gray-400 hover:text-white transition-colors hidden">
+                        <i class="fa-solid fa-folder-tree"></i>
+                    </button>
+                </div>
+                
+                <div class="w-full h-full flex flex-col items-center">
+                    <div class="w-full max-w-3xl px-4 md:px-6 pt-4 md:pt-6 pb-2">
+                        <div class="flex justify-end">
+                            <button id="show-repo-btn-desktop" class="hidden items-center px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs text-gray-300 transition-colors">
+                                <i class="fa-solid fa-folder-tree mr-2"></i>
+                                <span id="toggle-canvas-text">Show Repo Structure</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="chat-window" class="w-full max-w-3xl flex-1 overflow-y-auto p-4 md:px-6">
+                        <div id="chat-container" class="h-full">
+                            <!-- Initial screen will be populated here -->
+                        </div>
+                    </div>
+
+                    <div class="w-full max-w-3xl p-4 md:pb-8">
+                        <form id="analysis-form" class="w-full">
+                            <div id="input-area">
+                                <!-- Input area content will be populated dynamically -->
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="repo-canvas" class="w-0 flex flex-col bg-[var(--background-secondary)] border-l border-gray-700 h-full overflow-hidden">
+                <div class="canvas-header">
+                    <div class="flex items-center">
+                        <i class="fa-solid fa-folder-tree text-lg text-indigo-500 mr-3"></i>
+                        <h3 class="text-lg font-semibold text-white">Repository Structure</h3>
+                    </div>
+                    <button id="close-canvas-btn" class="p-2 text-gray-400 hover:text-white transition-colors">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                <div class="canvas-body">
+                    <div class="tree-panel">
+                        <div id="loading-tree" class="flex items-center justify-center py-8 hidden">
+                            <i class="fa-solid fa-spinner fa-spin text-xl text-indigo-500 mr-3"></i>
+                            <span class="text-gray-400 text-sm">Loading tree...</span>
+                        </div>
+                        <div id="tree-container" class="text-sm"></div>
+                    </div>
+                    <div class="preview-panel">
+                        <div id="file-preview-placeholder" class="flex items-center justify-center h-full text-gray-500">
+                            <div class="text-center">
+                                <i class="fa-solid fa-file-code text-3xl mb-4"></i>
+                                <p class="text-sm">Select a file to preview its content</p>
+                            </div>
+                        </div>
+                        <div id="file-preview" class="hidden h-full flex flex-col">
+                            <div class="mb-4 pb-3 border-b border-gray-700 flex-shrink-0">
+                                <div class="flex items-center justify-between">
+                                    <h4 id="file-preview-title" class="text-base font-medium text-white truncate"></h4>
+                                    <span id="file-preview-size" class="text-xs text-gray-400 ml-4"></span>
+                                </div>
+                            </div>
+                            <div id="file-preview-content" class="file-preview flex-grow"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Mode Switch Button -->
+        <button id="mode-switch-btn" class="mode-switch-btn hidden" title="Switch to Document Mode">
+            <i class="fa-solid fa-file-text"></i>
+        </button>
+    </div>
+    
+    <script>
+        // --- DOM Elements ---
+        const appContainer = document.getElementById('app-container');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
+        const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+        const openSidebarBtn = document.getElementById('open-sidebar-btn');
+        const closeSidebarBtn = document.getElementById('close-sidebar-btn');
+        const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        const analysisForm = document.getElementById('analysis-form');
+        const chatWindow = document.getElementById('chat-window');
+        const chatContainer = document.getElementById('chat-container');
+        const inputArea = document.getElementById('input-area');
+        const mobileHeaderTitle = document.getElementById('mobile-header-title');
+        const chatHistoryList = document.getElementById('chat-history-list');
+        const modeSwitchBtn = document.getElementById('mode-switch-btn');
+        
+        // Repository structure elements
+        const showRepoBtnDesktop = document.getElementById('show-repo-btn-desktop');
+        const showRepoBtnMobile = document.getElementById('show-repo-btn-mobile');
+        const toggleCanvasText = document.getElementById('toggle-canvas-text');
+        const repoCanvas = document.getElementById('repo-canvas');
+        const closeCanvasBtn = document.getElementById('close-canvas-btn');
+        const treeContainer = document.getElementById('tree-container');
+        const loadingTree = document.getElementById('loading-tree');
+        const filePreview = document.getElementById('file-preview');
+        const filePreviewPlaceholder = document.getElementById('file-preview-placeholder');
+        const filePreviewTitle = document.getElementById('file-preview-title');
+        const filePreviewSize = document.getElementById('file-preview-size');
+        const filePreviewContent = document.getElementById('file-preview-content');
+        
+
+        // --- App State ---
+        let currentMode = 'initial'; // 'initial', 'repo', 'document'
+        let currentChatId = null;
+        let isContextLoaded = false;
+        let isRepoLoaded = false;
+        let selectedFile = null;
+        let isCanvasOpen = false;
+        let chatHistory = [];
+        let isPDF = false; // <-- ADD THIS NEW STATE VARIABLE
+
+        // --- Initialize Markdown Converter ---
+        const markdownConverter = new showdown.Converter({ tables: true, strikethrough: true, simpleLineBreaks: true });
+
+        // --- Local Storage Functions ---
+        function loadChatHistory() {
+            const saved = localStorage.getItem('spoon_chat_history');
+            if (saved) {
+                try {
+                    chatHistory = JSON.parse(saved);
+                } catch (e) {
+                    chatHistory = [];
+                }
+            }
+            updateChatHistorySidebar();
+        }
+
+        function saveChatHistory() {
+            localStorage.setItem('spoon_chat_history', JSON.stringify(chatHistory));
+        }
+
+        function saveCurrentChat() {
+            if (!currentChatId) return;
+            
+            const chatIndex = chatHistory.findIndex(chat => chat.id === currentChatId);
+            if (chatIndex >= 0) {
+                chatHistory[chatIndex].messages = Array.from(chatContainer.children).map(msgEl => {
+                    const isUser = msgEl.querySelector('.bg-gray-600') !== null;
+                    const textEl = msgEl.querySelector('.prose');
+                    return {
+                        sender: isUser ? 'user' : 'ai',
+                        content: isUser ? textEl.textContent : textEl.innerHTML,
+                        timestamp: Date.now()
+                    };
+                });
+                chatHistory[chatIndex].lastActivity = Date.now();
+                saveChatHistory();
+            }
+        }
+
+        function createNewChat(mode, title, url = null) {
+            const chatId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const newChat = {
+                id: chatId,
+                mode: mode,
+                title: title,
+                url: url,
+                messages: [],
+                createdAt: Date.now(),
+                lastActivity: Date.now()
+            };
+            
+            chatHistory.unshift(newChat);
+            saveChatHistory();
+            return chatId;
+        }
+
+        function loadChat(chatId) {
+            const chat = chatHistory.find(c => c.id === chatId);
+            if (!chat) return;
+
+            // Save current chat before switching
+            if (currentChatId) {
+                saveCurrentChat();
+            }
+
+            currentChatId = chatId;
+            currentMode = chat.mode;
+            
+            // Clear current chat
+            chatContainer.innerHTML = '';
+            
+            // Load messages
+            if (chat.messages && chat.messages.length > 0) {
+                chat.messages.forEach(msg => {
+                    addMessageToChat(msg.sender, msg.content, false, true);
+                });
+                isContextLoaded = true;
+                setupInputForMode(currentMode, true);
+            } else {
+                isContextLoaded = false;
+                if (chat.mode === 'repo') {
+                    setupRepoMode();
+                } else if (chat.mode === 'document') {
+                    setupDocumentMode();
+                }
+            }
+
+            // Update UI
+            mobileHeaderTitle.textContent = chat.title;
+            updateChatHistorySidebar();
+            
+            if (chat.mode === 'repo') {
+                isRepoLoaded = true;
+                showRepoBtnDesktop.classList.remove('hidden');
+                showRepoBtnDesktop.classList.add('flex');
+                showRepoBtnMobile.classList.remove('hidden');
+                modeSwitchBtn.classList.remove('hidden');
+                modeSwitchBtn.innerHTML = '<i class="fa-solid fa-file-text"></i>';
+                modeSwitchBtn.title = 'Switch to Document Mode';
+            } else if (chat.mode === 'document') {
+                isRepoLoaded = false;
+                showRepoBtnDesktop.classList.add('hidden');
+                showRepoBtnMobile.classList.add('hidden');
+                if (isCanvasOpen) closeRepoCanvas();
+                modeSwitchBtn.classList.remove('hidden');
+                modeSwitchBtn.innerHTML = '<i class="fa-solid fa-code-branch"></i>';
+                modeSwitchBtn.title = 'Switch to Repository Mode';
+            }
+        }
+
+        function updateChatHistorySidebar() {
+            chatHistoryList.innerHTML = '';
+            
+            chatHistory.forEach(chat => {
+                const chatItem = document.createElement('div');
+                chatItem.className = `chat-history-item ${chat.id === currentChatId ? 'active' : ''}`;
+                chatItem.onclick = () => loadChat(chat.id);
+                
+                const timeAgo = getTimeAgo(chat.lastActivity);
+                const modeIcon = chat.mode === 'repo' ? 'fa-code-branch' : 'fa-file-text';
+                const modeText = chat.mode === 'repo' ? 'Repository' : 'Document';
+                
+                chatItem.innerHTML = `
+                    <h4><i class="fa-solid ${modeIcon} mr-2"></i>${chat.title}</h4>
+                    <p>${timeAgo}</p>
+                    <span class="chat-type-badge">${modeText}</span>
+                `;
+                
+                chatHistoryList.appendChild(chatItem);
+            });
+        }
+
+        function getTimeAgo(timestamp) {
+            const diff = Date.now() - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (days > 0) return `${days}d ago`;
+            if (hours > 0) return `${hours}h ago`;
+            if (minutes > 0) return `${minutes}m ago`;
+            return 'Just now';
+        }
+
+        // --- Mobile Height Fix ---
+        setAppHeight();
+        window.addEventListener('resize', setAppHeight);
+        function setAppHeight() {
+            appContainer.style.height = `${window.innerHeight}px`;
+        };
+
+        // --- Sidebar Logic ---
+        sidebarToggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('w-64');
+            sidebar.classList.toggle('w-20');
+            sidebar.classList.toggle('p-2');
+            sidebar.classList.toggle('p-4');
+            sidebar.classList.toggle('sidebar-collapsed');
+            sidebarToggleBtn.querySelector('i').classList.toggle('fa-chevron-right');
+        });
+        openSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.remove('-translate-x-full');
+            sidebarBackdrop.classList.remove('hidden');
+        });
+        const closeMobileSidebar = () => {
+            sidebar.classList.add('-translate-x-full');
+            sidebarBackdrop.classList.add('hidden');
+        };
+        closeSidebarBtn.addEventListener('click', closeMobileSidebar);
+        sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+
+        // --- Mode Switch Button ---
+        modeSwitchBtn.addEventListener('click', () => {
+            if (currentMode === 'repo') {
+                newDocumentChat();
+            } else {
+                newRepoChat();
+            }
+        });
+
+        function newChat() {
+            // Save current chat before creating new one
+            if (currentChatId) {
+                saveCurrentChat();
+            }
+            
+            currentChatId = null;
+            currentMode = 'initial';
+            isContextLoaded = false;
+            isRepoLoaded = false;
+            
+            showInitialScreen();
+            updateChatHistorySidebar();
+            modeSwitchBtn.classList.add('hidden');
+            showRepoBtnDesktop.classList.add('hidden');
+            showRepoBtnMobile.classList.add('hidden');
+            if (isCanvasOpen) closeRepoCanvas();
+            mobileHeaderTitle.textContent = 'Spoon Analysis';
+        }
+
+        function newRepoChat() {
+            // Save current chat
+            if (currentChatId) {
+                saveCurrentChat();
+            }
+            
+            currentChatId = null;
+            currentMode = 'repo';
+            isContextLoaded = false;
+            isRepoLoaded = false;
+            
+            setupRepoMode();
+            updateChatHistorySidebar();
+            showRepoBtnDesktop.classList.add('hidden');
+            showRepoBtnMobile.classList.add('hidden');
+            if (isCanvasOpen) closeRepoCanvas();
+            modeSwitchBtn.classList.remove('hidden');
+            modeSwitchBtn.innerHTML = '<i class="fa-solid fa-file-text"></i>';
+            modeSwitchBtn.title = 'Switch to Document Mode';
+            mobileHeaderTitle.textContent = 'Repository Analysis';
+        }
+
+        function newDocumentChat() {
+            // Save current chat
+            if (currentChatId) {
+                saveCurrentChat();
+            }
+            
+            currentChatId = null;
+            currentMode = 'document';
+            isContextLoaded = false;
+            isRepoLoaded = false;
+            
+            setupDocumentMode();
+            updateChatHistorySidebar();
+            showRepoBtnDesktop.classList.add('hidden');
+            showRepoBtnMobile.classList.add('hidden');
+            if (isCanvasOpen) closeRepoCanvas();
+            modeSwitchBtn.classList.remove('hidden');
+            modeSwitchBtn.innerHTML = '<i class="fa-solid fa-code-branch"></i>';
+            modeSwitchBtn.title = 'Switch to Repository Mode';
+            mobileHeaderTitle.textContent = 'Document Analysis';
+        }
+
+        // --- UI Setup Functions ---
+        
+        function setupRepoMode() {
+            chatContainer.innerHTML = `
+                <div class="h-full flex flex-col justify-center items-center text-center">
+                    <div class="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center mb-6">
+                        <i class="fa-solid fa-code-branch text-3xl text-white"></i>
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-bold text-gray-200">Repository Analysis</h2>
+                    <p class="text-gray-400 mt-2 text-base">Enter a GitHub repository URL to begin analysis.</p>
+                </div>
+            `;
+            
+            inputArea.innerHTML = `
+                <div class="input-wrapper flex items-center p-2 bg-[var(--background-secondary)] rounded-2xl border border-gray-700 transition-shadow duration-200">
+                    <input type="text" id="repo-input" placeholder="Enter GitHub repository URL..." class="flex-1 bg-transparent px-4 text-sm text-white placeholder-gray-500 focus:outline-none">
+                    <button type="submit" class="p-2 rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed" id="repo-submit-button">
+                        <i class="fa-solid fa-arrow-up text-white"></i>
+                    </button>
+                </div>
+            `;
+        }
+
+        function setupDocumentMode() {
+            chatContainer.innerHTML = `
+                <div class="h-full flex flex-col justify-center items-center text-center">
+                    <div class="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center mb-6">
+                        <i class="fa-solid fa-file-text text-3xl text-white"></i>
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-bold text-gray-200">Document Analysis</h2>
+                    <p class="text-gray-400 mt-2 text-base">Upload a document to begin analysis.</p>
+                </div>
+            `;
+            
+            inputArea.innerHTML = `
+                <div class="input-wrapper flex items-center p-2 bg-[var(--background-secondary)] rounded-2xl border border-gray-700 transition-shadow duration-200">
+                    <label for="file-upload" class="p-2 rounded-full hover:bg-gray-700 cursor-pointer transition-colors">
+                        <i class="fa-solid fa-plus text-gray-400"></i>
+                    </label>
+                    <input type="file" id="file-upload" class="hidden" accept=".pdf,.md">
+                    <input type="text" id="doc-input" placeholder="Upload a document or enter text..." class="flex-1 bg-transparent px-4 text-sm text-white placeholder-gray-500 focus:outline-none" readonly>
+                    <button type="submit" class="p-2 rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed" id="doc-submit-button">
+                        <i class="fa-solid fa-arrow-up text-white"></i>
+                    </button>
+                </div>
+            `;
+        }
+
+        function setupInputForMode(mode, hasContext) {
+            if (hasContext) {
+                inputArea.innerHTML = `
+                    <div class="input-wrapper flex items-center p-2 bg-[var(--background-secondary)] rounded-2xl border border-gray-700 transition-shadow duration-200">
+                        <input type="text" id="follow-up-input" placeholder="Ask a follow-up question..." class="flex-1 bg-transparent px-4 text-sm text-white placeholder-gray-500 focus:outline-none">
+                        <button type="submit" class="p-2 rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed" id="follow-up-submit-button">
+                            <i class="fa-solid fa-arrow-up text-white"></i>
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // --- Repository Canvas Logic ---
+        function openRepoCanvas() {
+            if (isCanvasOpen) return;
+            repoCanvas.classList.remove('w-0');
+            repoCanvas.classList.add('w-full', 'md:w-2/5', 'lg:w-1/3');
+            toggleCanvasText.textContent = 'Hide Repo Structure';
+            isCanvasOpen = true;
+
+            if (!treeContainer.innerHTML.trim()) {
+                loadRepositoryTree();
+            }
+        }
+
+        function closeRepoCanvas() {
+            if (!isCanvasOpen) return;
+            repoCanvas.classList.add('w-0');
+            repoCanvas.classList.remove('w-full', 'md:w-2/5', 'lg:w-1/3');
+            toggleCanvasText.textContent = 'Show Repo Structure';
+            isCanvasOpen = false;
+        }
+
+        function toggleRepoCanvas() {
+            isCanvasOpen ? closeRepoCanvas() : openRepoCanvas();
+        }
+
+        showRepoBtnDesktop.addEventListener('click', toggleRepoCanvas);
+        showRepoBtnMobile.addEventListener('click', toggleRepoCanvas);
+        closeCanvasBtn.addEventListener('click', closeRepoCanvas);
+
+        async function loadRepositoryTree() {
+            loadingTree.classList.remove('hidden');
+            treeContainer.innerHTML = '';
+            try {
+                const response = await fetch('/api/get_repo_tree');
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to load repository tree');
+                
+                renderTreeNode(data.tree, treeContainer);
+                
+                const rootChildrenContainer = treeContainer.querySelector('.tree-node > .tree-children');
+                if (rootChildrenContainer) {
+                    rootChildrenContainer.classList.add('overflow-y-auto', 'flex-grow', 'pr-1');
+                }
+                
+            } catch (error) {
+                treeContainer.innerHTML = `
+                    <div class="text-red-400 p-4 text-center">
+                        <i class="fa-solid fa-exclamation-triangle mb-2"></i><p>Failed to load repository structure</p>
+                        <p class="text-sm">${error.message}</p>
+                    </div>`;
+            } finally {
+                loadingTree.classList.add('hidden');
+            }
+        }
+        
+        function renderTreeNode(node, container) {
+            const nodeElement = document.createElement('div');
+            if (node.type === 'repository') {
+                nodeElement.className = 'tree-node flex flex-col flex-grow overflow-hidden';
+            } else {
+                nodeElement.className = 'tree-node';
+            }
+            
+            const itemElement = document.createElement('div');
+            itemElement.className = 'tree-item flex-shrink-0';
+            
+            let toggleIcon = '';
+            let fileIcon = '';
+            
+            if (node.type === 'directory' || node.type === 'repository') {
+                toggleIcon = '<i class="fa-solid fa-chevron-right tree-toggle"></i>';
+                fileIcon = '<i class="fa-solid fa-folder text-blue-400 tree-icon"></i>';
+            } else {
+                toggleIcon = '<span class="tree-toggle"></span>';
+                if (node.is_binary) {
+                    fileIcon = '<i class="fa-solid fa-file text-gray-500 tree-icon"></i>';
+                } else if (node.name.match(/\.(js|ts|jsx|tsx)$/)) {
+                    fileIcon = '<i class="fa-brands fa-js-square text-yellow-400 tree-icon"></i>';
+                } else if (node.name.match(/\.(py)$/)) {
+                    fileIcon = '<i class="fa-brands fa-python text-green-400 tree-icon"></i>';
+                } else if (node.name.match(/\.(html|htm)$/)) {
+                    fileIcon = '<i class="fa-brands fa-html5 text-orange-400 tree-icon"></i>';
+                } else if (node.name.match(/\.(css|scss|sass)$/)) {
+                    fileIcon = '<i class="fa-brands fa-css3-alt text-blue-400 tree-icon"></i>';
+                } else if (node.name.match(/\.(md|markdown)$/)) {
+                    fileIcon = '<i class="fa-brands fa-markdown text-white tree-icon"></i>';
+                } else if (node.name.match(/\.(json)$/)) {
+                    fileIcon = '<i class="fa-solid fa-code text-yellow-400 tree-icon"></i>';
+                } else {
+                    fileIcon = '<i class="fa-solid fa-file-code text-gray-400 tree-icon"></i>';
+                }
+            }
+            
+            itemElement.innerHTML = `
+                ${toggleIcon}
+                ${fileIcon}
+                <span class="truncate">${node.name}</span>
+                ${node.size ? `<span class="ml-auto text-xs text-gray-500">${formatFileSize(node.size)}</span>` : ''}
+            `;
+            
+            nodeElement.appendChild(itemElement);
+            
+            if (node.children && node.children.length > 0) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'tree-children hidden';
+                
+                node.children.forEach(child => {
+                    renderTreeNode(child, childrenContainer);
+                });
+                
+                nodeElement.appendChild(childrenContainer);
+                
+                itemElement.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const toggle = itemElement.querySelector('.tree-toggle');
+                    const children = childrenContainer;
+                    
+                    if (toggle && children) {
+                        children.classList.toggle('hidden');
+                        toggle.classList.toggle('expanded');
+                    }
+                });
+
+                if (node.type === 'repository') {
+                    itemElement.click();
+                }
+
+            } else if (node.type === 'file') {
+                itemElement.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    selectFile(node, itemElement);
+                });
+            }
+            
+            container.appendChild(nodeElement);
+        }
+
+        function selectFile(fileNode, itemElement) {
+            document.querySelectorAll('.tree-item.selected').forEach(el => el.classList.remove('selected'));
+            itemElement.classList.add('selected');
+            if (fileNode.is_binary || fileNode.is_large) {
+                showFilePreview(fileNode.name, null, fileNode.size, fileNode.is_binary ? 'Binary file' : 'File too large to display');
+            } else {
+                loadFileContent(fileNode.path, fileNode.name, fileNode.size);
+            }
+        }
+
+        async function loadFileContent(filePath, fileName, fileSize) {
+            showFilePreview(fileName, '<div class="flex justify-center items-center h-full"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>', fileSize);
+            try {
+                const response = await fetch('/api/get_file_content', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_path: filePath })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to load file content');
+                const fileData = data.file;
+                if (fileData.error) {
+                    showFilePreview(fileName, `<div class="text-red-400 p-4">${fileData.error}</div>`, fileSize);
+                } else {
+                    const language = getLanguageFromPath(filePath);
+                    const formattedContent = `<pre><code class="language-${language}">${escapeHtml(fileData.content)}</code></pre>`;
+                    showFilePreview(fileName, formattedContent, fileSize);
+                }
+            } catch (error) {
+                showFilePreview(fileName, `<div class="text-red-400 p-4">Error: ${error.message}</div>`, fileSize);
+            }
+        }
+
+        function showFilePreview(fileName, content, fileSize, errorMessage = null) {
+            filePreviewTitle.textContent = fileName;
+            filePreviewSize.textContent = fileSize ? formatFileSize(fileSize) : '';
+            if (errorMessage) {
+                filePreviewContent.innerHTML = `<div class="text-gray-500 p-4 text-center h-full flex items-center justify-center">${errorMessage}</div>`;
+            } else {
+                filePreviewContent.innerHTML = content;
+            }
+            filePreviewPlaceholder.classList.add('hidden');
+            filePreview.classList.remove('hidden');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function getLanguageFromPath(path) {
+            const extension = path.split('.').pop().toLowerCase();
+            const languageMap = { 'js': 'javascript', 'jsx': 'javascript', 'ts': 'typescript', 'tsx': 'typescript', 'py': 'python', 'html': 'html', 'css': 'css', 'scss': 'scss', 'json': 'json', 'md': 'markdown', 'yml': 'yaml', 'yaml': 'yaml', 'xml': 'xml', 'sql': 'sql', 'sh': 'bash', 'bash': 'bash' };
+            return languageMap[extension] || 'text';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function renderInitialHints(mode) {
+            const hintsContainer = document.createElement('div');
+            hintsContainer.className = 'w-full py-6';
+
+            let hints = [];
+            
+            // --- START OF CHANGE ---
+            // We now use an array of objects, with separate text for display and for the prompt.
+            if (mode === 'repo') {
+                hints = [
+                    {
+                        displayText: "Summarize this repository's purpose.",
+                        promptText: "Provide a very detailed but comprehensive summary of this repository's purpose, what problem it solves, and who its intended users are. Read the entire file stuctrue and answer please."
+                    },
+                    {
+                        displayText: "List the key technologies.",
+                        promptText: "Analyze the file structure and all contents to identify and list the key technologies, frameworks, languages, and major libraries used in this project. Provide a detailed explanation for each."
+                    },
+                    {
+                        displayText: "Suggest real-world use cases.",
+                        promptText: "Based on the repository's purpose and technology, generate a list of distinct and practical real-world use cases for this project. Explain each use case in detail. Give me as many as you can."
+                    }
+                ];
+            } else { // for 'document'
+                hints = [
+                    {
+                        displayText: "Summarize the document's subject.",
+                        promptText: "Read through the provided context and write a very detailed summary of the document's main subject. Capture the core arguments, purpose, and key takeaways."
+                    },
+                    {
+                        displayText: "Identify the key topics.",
+                        promptText: "Identify the key sections, topics, or recurring themes covered in this document. Present them as a bulleted list with a brief description for each topic."
+                    },
+                    {
+                        displayText: "List potential applications.",
+                        promptText: "Based on the content of this document, describe potential real-world applications, actions, or insights that a reader could gain from it."
+                    }
+                ];
+            }
+
+            const hintsGrid = document.createElement('div');
+            hintsGrid.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4'; // Adjusted for 3 hints
+
+            hints.forEach(hint => {
+                const button = document.createElement('button');
+                button.className = 'hint-card';
+                button.textContent = hint.displayText; // Show the short text
+                // Send the long, detailed prompt when clicked
+                button.onclick = () => handleAskQuestion(hint.promptText);
+                hintsGrid.appendChild(button);
+            });
+            // --- END OF CHANGE ---
+
+            const introMessage = document.createElement('div');
+            introMessage.className = 'prose prose-invert max-w-none';
+            introMessage.innerHTML = `<p>I'm ready to answer your questions. You can start with one of these suggestions or ask your own question below.</p>`;
+            
+            hintsContainer.append(introMessage, hintsGrid);
+            chatContainer.appendChild(hintsContainer);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // --- Form Submission Handler ---
+        analysisForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (currentMode === 'initial') {
+                return; // Should not happen
+            }
+            
+            if (!isContextLoaded) {
+                if (currentMode === 'repo') {
+                    await handleLoadRepo();
+                } else if (currentMode === 'document') {
+                    await handleLoadDocument();
+                }
+            } else {
+                await handleFollowUpQuestion();
+            }
+        });
+
+        // --- File Upload Handler ---
+        document.addEventListener('change', (e) => {
+            if (e.target.id === 'file-upload') {
+                const fileInput = e.target;
+                const textInput = document.getElementById('doc-input');
+                
+                if (fileInput.files.length > 0) {
+                    textInput.value = `File: ${fileInput.files[0].name}`;
+                }
+            }
+        });
+
+        // --- Handler Functions ---
+        async function handleLoadRepo() {
+            const repoInput = document.getElementById('repo-input');
+            const submitButton = document.getElementById('repo-submit-button');
+            const userInput = repoInput.value.trim();
+            
+            if (!userInput) return;
+            
+            // Clear the input immediately
+            repoInput.value = '';
+            
+            // Create new chat if not exists
+            if (!currentChatId) {
+                const repoName = extractRepoName(userInput);
+                currentChatId = createNewChat('repo', repoName, userInput);
+                updateChatHistorySidebar();
+            }
+            
+            // Clear initial screen
+            chatContainer.innerHTML = '';
+            
+            setLoadingState(submitButton, true);
+            
+            addMessageToChat('user', `Loading repository: ${userInput}`);
+            addMessageToChat('ai', '...', true);
+            
+            try {
+                const response = await fetch('/api/load_repo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: userInput })
+                });
+                
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to load repository.');
+                
+                updateLastMessage(data.message);
+                isContextLoaded = true;
+                isRepoLoaded = true;
+                
+                // Setup follow-up input
+                setupInputForMode('repo', true);
+                
+                // Show repo structure button
+                showRepoBtnDesktop.classList.remove('hidden');
+                showRepoBtnDesktop.classList.add('flex');
+                showRepoBtnMobile.classList.remove('hidden');
+
+                renderInitialHints('repo');
+                
+                
+            } catch (error) {
+                updateLastMessage(`Error: ${error.message}`);
+            } finally {
+                setLoadingState(submitButton, false);
+            }
+        }
+
+        async function handleLoadDocument() {
+            const fileInput = document.getElementById('file-upload');
+            const docInput = document.getElementById('doc-input');
+            const submitButton = document.getElementById('doc-submit-button');
+            
+            if (!fileInput.files.length) return;
+
+            const file = fileInput.files[0];
+            const fileName = file.name;
+
+            if (!currentChatId) {
+                currentChatId = createNewChat('document', fileName);
+                updateChatHistorySidebar();
+            }
+            
+            docInput.value = '';
+            fileInput.value = '';
+            
+            chatContainer.innerHTML = '';
+            
+            setLoadingState(submitButton, true);
+            
+            addMessageToChat('user', `Loading document: ${fileName}`);
+            addMessageToChat('ai', '...', true);
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                let response;
+                // --- START OF CHANGE ---
+                // Set the isPDF flag based on file type and route correctly
+                if (fileName.toLowerCase().endsWith('.pdf')) {
+                    isPDF = true; // Set the flag for PDFs
+                    console.log("Routing to PDF endpoint: /api/load_pdf");
+                    response = await fetch('/api/load_pdf', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    isPDF = false; // Ensure the flag is false for non-PDFs
+                    console.log("Routing to general file endpoint: /api/load_file");
+                    response = await fetch('/api/load_file', {
+                        method: 'POST',
+                        body: formData
+                    });
+                }
+                // --- END OF CHANGE ---
+                
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to load document.');
+                
+                updateLastMessage(data.message);
+                isContextLoaded = true;
+                
+                setupInputForMode('document', true);
+                renderInitialHints('document');
+                
+            } catch (error) {
+                updateLastMessage(`Error: ${error.message}`);
+            } finally {
+                setLoadingState(submitButton, false);
+            }
+        }
+
+        async function handleFollowUpQuestion() {
+            const followUpInput = document.getElementById('follow-up-input');
+            const submitButton = document.getElementById('follow-up-submit-button');
+            const question = followUpInput.value.trim();
+            
+            if (!question) return;
+            
+            // Clear input immediately
+            followUpInput.value = '';
+            
+            await handleAskQuestion(question, false, submitButton);
+        }
+        
+        async function handleAskQuestion(question, isAuto = false, submitButton = null) {
+            if (!isAuto) addMessageToChat('user', question);
+            addMessageToChat('ai', '...', true);
+            
+            if (submitButton) setLoadingState(submitButton, true);
+            
+            try {
+                // --- START OF CHANGE ---
+                let endpoint = '/api/ask_question'; // Default to the general endpoint
+
+                // Use the dedicated PDF endpoint ONLY if the mode is 'document' AND it's a PDF.
+                if (currentMode === 'document' && isPDF) {
+                    endpoint = '/api/ask_pdf_question';
+                }
+                
+                console.log(`Sending question to endpoint: ${endpoint}`);
+                // --- END OF CHANGE ---
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
+                
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to get a response.');
+                updateLastMessage(data.response);
+                
+                saveCurrentChat();
+                
+            } catch (error) {
+                updateLastMessage(`Error: ${error.message}`);
+            } finally {
+                if (submitButton) setLoadingState(submitButton, false);
+            }
+        }
+        
+        function setLoadingState(button, isLoading) {
+            button.disabled = isLoading;
+            const icon = button.querySelector('i');
+            icon.className = isLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-arrow-up';
+        }
+
+        function addMessageToChat(sender, text, isThinking = false, isRestore = false) {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = 'w-full py-6';
+            const messageContent = document.createElement('div');
+            messageContent.className = 'w-full flex items-start space-x-4';
+            const icon = document.createElement('div');
+            icon.className = 'w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center';
+            const messageText = document.createElement('div');
+            messageText.className = 'prose prose-invert max-w-none pt-1';
+            
+            if (sender === 'user') {
+                icon.classList.add('bg-gray-600');
+                icon.innerHTML = '<i class="fa-solid fa-user"></i>';
+                messageText.textContent = text;
+            } else {
+                icon.classList.add('bg-gradient-to-br', 'from-indigo-600', 'to-purple-700');
+                icon.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
+                if (isThinking) {
+                    messageText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+                } else if (isRestore) {
+                    messageText.innerHTML = text; // Already processed HTML
+                } else {
+                    messageText.innerHTML = markdownConverter.makeHtml(text);
+                }
+            }
+            
+            messageContent.append(icon, messageText);
+            messageWrapper.appendChild(messageContent);
+            chatContainer.appendChild(messageWrapper);
+            
+            if (!isRestore) {
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+        }
+
+        function updateLastMessage(text) {
+            const lastMessage = chatContainer.lastChild?.querySelector('.prose');
+            if (lastMessage) {
+                lastMessage.innerHTML = markdownConverter.makeHtml(text);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+        }
+
+        function extractRepoName(url) {
+            try {
+                const match = url.match(/github\.com\/([^\/]+\/[^\/]+)/);
+                return match ? match[1] : 'Repository';
+            } catch (e) {
+                return 'Repository';
+            }
+        }
+        
+        // --- Keyboard Shortcuts ---
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && isCanvasOpen) {
+                closeRepoCanvas();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k' && isRepoLoaded) {
+                e.preventDefault();
+                toggleRepoCanvas();
+            }
+        });
+
+        // --- Initialize App ---
+        function initializeApp() {
+            loadChatHistory();
+            newRepoChat(); // Start directly in repo mode
+            // Or use newDocumentChat(); to start in document mode
+        }
+
+        // Start the app
+        initializeApp();
+    </script>
+</body>
+</html>

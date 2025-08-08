@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spoon - Understand Any Codebase</title>
+    
+    <!-- Google Fonts: Space Grotesk -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Tailwind CSS for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /* Custom Styles complementing Tailwind */
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background-color: #000000; /* Pure black background */
+            color: #EAEAEA; /* Slightly off-white for text */
+            overflow-x: hidden;
+        }
+
+        /* Animated particle background canvas - more subtle */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.08; /* Reduced opacity for subtlety */
+        }
+        
+        .content-wrapper {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Custom animation keyframes */
+        @keyframes pan-in {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Applying animations with delays */
+        .animate-pan-in {
+            animation: pan-in 1s ease-out forwards;
+        }
+        
+        .delay-1 { animation-delay: 0.2s; }
+        .delay-2 { animation-delay: 0.4s; }
+        .delay-3 { animation-delay: 0.6s; }
+        .delay-4 { animation-delay: 0.8s; }
+
+        /* Ensure animations start off invisible */
+        [class*="animate-pan-in"] {
+            opacity: 0;
+        }
+
+        /* Minimalist button style */
+        .cta-button {
+            background-color: transparent;
+            border: 1px solid #EAEAEA;
+            color: #EAEAEA;
+            transition: all 0.3s ease;
+        }
+
+        .cta-button:hover {
+            background-color: #EAEAEA;
+            color: #000000;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- The interactive particle background will be rendered here -->
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="content-wrapper min-h-screen flex flex-col justify-center items-center p-4">
+        
+        <!-- Main Centered Content -->
+        <main class="flex-grow flex flex-col justify-center items-center text-center">
+            <div class="w-full max-w-4xl">
+                <h1 class="text-4xl font-bold text-white mb-4 animate-pan-in delay-1">Spoon<span class="text-gray-500">.</span></h1>
+                <h2 class="text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-tight animate-pan-in delay-2">
+                   Get the Gist of Any Codebase.
+                </h2>
+                <p class="mt-6 text-lg md:text-xl text-gray-400 max-w-2xl mx-auto animate-pan-in delay-3">
+                    Spoon analyzes GitHub repositories and technical documents, serving you the key insights so you can understand projects faster.
+                </p>
+                <div class="mt-10 animate-pan-in delay-4">
+                    <a href="/analysis" class="cta-button inline-block font-bold text-lg rounded-full py-3 px-8">
+                        Analyze a Repo
+                    </a>
+                    </a>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer Section -->
+        <footer class="w-full max-w-7xl mx-auto py-6">
+            <div class="text-center text-gray-600 flex items-center justify-center space-x-4">
+                <span>Made with <i class="fa-solid fa-heart text-gray-500"></i></span>
+                <span class="text-gray-700">|</span>
+                <a href="https://github.com/your-username" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors duration-300">
+                    <i class="fa-brands fa-github text-2xl"></i>
+                </a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // JavaScript for the interactive particle background
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let particlesArray;
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size, color) {
+                this.x = x;
+                this.y = y;
+                this.directionX = directionX;
+                this.directionY = directionY;
+                this.size = size;
+                this.color = color;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+
+            update() {
+                if (this.x > canvas.width || this.x < 0) {
+                    this.directionX = -this.directionX;
+                }
+                if (this.y > canvas.height || this.y < 0) {
+                    this.directionY = -this.directionY;
+                }
+                this.x += this.directionX;
+                this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function init() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 15000; // Reduced particle count
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 1.5) + 0.5;
+                let x = (Math.random() * ((innerWidth - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((innerHeight - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.3) - 0.15;
+                let directionY = (Math.random() * 0.3) - 0.15;
+                let color = 'rgba(200, 200, 200, 0.8)';
+
+                particlesArray.push(new Particle(x, y, directionX, directionY, size, color));
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, innerWidth, innerHeight);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+        }
+        
+        // Removed the connect() function for a cleaner, particle-only look
+
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            init();
+        });
+
+        init();
+        animate();
+    </script>
+
+</body>
+</html>
