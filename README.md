@@ -1,5 +1,7 @@
 # Spoon
 
+[https://spoon-vz8l.onrender.com](https://spoon-vz8l.onrender.com)
+
 *Get the gist of any codebase or document.*
 
 ### What's this all about?
@@ -85,3 +87,9 @@ python run.py
 ```
 
 **The app should now be running on http://127.0.0.1:5000**
+
+
+
+![Repo view](repo.png)
+
+![Document view](doc.png)
