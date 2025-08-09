@@ -162,6 +162,10 @@ def load_pdf_route():
 
 
 @app.route('/api/ask_question', methods=['POST'])
+# In backend/app/routes.py
+
+@app.route('/api/ask_question', methods=['POST'])
+@app.route('/api/ask_question', methods=['POST'])
 def ask_question_route():
     """
     Handles a user's question about a repository or non-PDF document.
@@ -182,6 +186,7 @@ def ask_question_route():
         gemini_api_key = os.getenv("GEMINI_API_KEY")
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=gemini_api_key, temperature=0.0)
 
+        # Step 1: Classify if the input is a real question or just conversation
         intent_classifier_prompt = ChatPromptTemplate.from_template(
             """
             You are an intent classifier. Your job is to determine if a user's input is a technical question about a code repository or a simple conversational reply/question.
@@ -215,62 +220,82 @@ def ask_question_route():
             return jsonify({"response": answer})
         
         else:
-            planner_prompt = ChatPromptTemplate.from_template(
+            # Step 2: Classify if the technical question is broad or specific.
+            query_classifier_prompt = ChatPromptTemplate.from_template(
                 """
-                You are an expert software engineer acting as a query planner.
-                Your task is to identify the most relevant files to answer the user's question based on the provided file manifest.
+                You are a query classifier. Your task is to determine if a user's question about a codebase is a "broad_query" or a "specific_query".
+
+                - "broad_query": The user is asking for a high-level, general overview. These questions require understanding the whole project.
+                  Examples: "what does this codebase do?", "explain this project", "give me a summary", "what is the overall architecture?", "what are the key features?", "generate potential use cases"
+
+                - "specific_query": The user is asking about a particular file, function, or focused concept. These questions can be answered by looking at a small number of files.
+                  Examples: "what does the User model in `user.py` do?", "explain the `calculate_payment` function", "where are the database credentials stored?"
+
+                Based on the user's question, what is the query type? Respond with ONLY "broad_query" or "specific_query".
 
                 User Question: "{question}"
-
-                Available Files:
-                {file_manifest}
-
-                Instructions:
-                - List the full paths of the most relevant files, separated by commas.
-                - Do not explain your reasoning.
-                - If no files seem relevant, or the question is general, respond with "README.md".
-                - Be concise. Your output should only be a comma-separated list of file paths.
-
-                Example Response: src/api/routes.py,src/database/models.py,README.md
-                
-                Relevant Files:
+                Query Type:
                 """
             )
-            planner_chain = planner_prompt | llm | StrOutputParser()
-            
-            print("--- Running Planner Chain to find relevant files... ---")
-            relevant_files_str = planner_chain.invoke({
-                "question": question,
-                "file_manifest": file_manifest
-            })
-            relevant_file_paths = [f.strip() for f in relevant_files_str.split(',') if f.strip()]
-            print(f"--- Planner identified relevant files: {relevant_file_paths} ---")
+            query_classifier_chain = query_classifier_prompt | llm | StrOutputParser()
+            query_type = query_classifier_chain.invoke({"question": question})
+            print(f"--- Query classified as: {query_type} ---")
 
-            relevant_docs = [doc for doc in all_docs if doc.metadata.get("source") in relevant_file_paths]
-            
-            if not relevant_docs:
-                relevant_docs = [doc for doc in all_docs if "README.md" in doc.metadata.get("source", "")]
+            relevant_docs = []
 
+            # Step 3: Decide whether to use the file-picking planner based on the query type.
+            if "broad_query" in query_type.lower():
+                print("--- Broad query detected. Using full context. ---")
+                relevant_docs = all_docs
+            else: # "specific_query"
+                print("--- Specific query detected. Running planner to find relevant files... ---")
+                planner_prompt = ChatPromptTemplate.from_template(
+                    """
+                    You are an expert software engineer acting as a query planner.
+                    Your task is to identify the most relevant files to answer the user's question based on the provided file manifest.
+                    User Question: "{question}"
+                    Available Files:
+                    {file_manifest}
+                    Instructions:
+                    - List the full paths of the most relevant files, separated by commas.
+                    - Do not explain your reasoning.
+                    - If no files seem relevant, respond with "README.md".
+                    - Be concise. Your output should only be a comma-separated list of file paths.
+                    Relevant Files:
+                    """
+                )
+                planner_chain = planner_prompt | llm | StrOutputParser()
+                
+                relevant_files_str = planner_chain.invoke({ "question": question, "file_manifest": file_manifest })
+                relevant_file_paths = [f.strip() for f in relevant_files_str.split(',') if f.strip()]
+                print(f"--- Planner identified relevant files: {relevant_file_paths} ---")
+
+                relevant_docs = [doc for doc in all_docs if doc.metadata.get("source") in relevant_file_paths]
+                
+                if not relevant_docs: # Fallback
+                    relevant_docs = [doc for doc in all_docs if "README.md" in doc.metadata.get("source", "")]
+            
+            # Step 4: The final answering step, now with the correct context.
             context_for_responder = "\n\n---\n\n".join(
                 [f"File: {doc.metadata.get('source')}\n\nContent:\n{doc.page_content}" for doc in relevant_docs]
             )
 
             responder_prompt = ChatPromptTemplate.from_template(
                 """
-                You are Spoon, an expert AI software engineer. Your task is to answer the user's question strictly based on the provided context.
+                You are Spoon, an expert AI software engineer. Your primary function is to analyze a given codebase and answer questions as a senior developer would.
 
-                **INSTRUCTIONS:**
-                1.  **Strictly Adhere to Context**: Base your entire response ONLY on the information given in the CONTEXT section below. Do not use any external knowledge or make assumptions.
-                2.  **Do Not Mention Missing Information**: Do NOT mention any files, functions, or information that is missing from the context. Do not suggest that additional information would be helpful.
-                3.  **No Fabrication**: If you cannot answer the question from the provided context, you MUST politely state that the answer is not available in the provided files. Do not invent or infer information.
-                4.  **Formatting**: Provide a clear, concise, and accurate analysis formatted in clean Markdown.
+                **Core Instructions:**
+                1.  **Analyze and Infer**: Your answer MUST be based on the provided CONTEXT. Do not just search for literal text. You are expected to read, understand, and interpret the code and text files to form your conclusions.
+                2.  **Synthesize and Generate**: When asked for abstract concepts like the project's 'purpose', 'problem it solves', 'intended users', or to **generate potential 'use cases'**, you MUST synthesize these answers by analyzing the entire context. Look at API routes, UI elements, dependencies, and comments to determine the application's function, audience, and practical applications.
+                3.  **Be Creative with Use Cases**: When asked for use cases, think practically about who would benefit from this tool and what specific problems it would solve for them. Generate a detailed list based on the project's confirmed features.
+                4.  **No External Knowledge**: Do not use any information outside of the provided CONTEXT. If the context genuinely doesn't provide enough information to form a conclusion, only then should you state that.
 
-                CONTEXT:
+                **CONTEXT:**
                 {context}
 
-                Question: {question}
+                **Question:** {question}
 
-                Answer:
+                **Answer:**
                 """
             )
 
